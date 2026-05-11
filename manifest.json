@@ -1,0 +1,9 @@
+{
+  "name": "МикроБот — Микробиология Сеченов",
+  "short_name": "МикроБот",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#080B14",
+  "theme_color": "#080B14",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
