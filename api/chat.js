@@ -1,11 +1,19 @@
-import { createClient } from '@supabase/supabase-js';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const FREE_LIMIT = 10;
 
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_KEY
-);
-
-const FREE_LIMIT = 10; // бесплатных сообщений
+function sbFetch(path, options = {}) {
+  return fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Prefer': 'return=representation',
+      ...(options.headers || {})
+    }
+  });
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -17,38 +25,32 @@ export default async function handler(req, res) {
   const { system, messages, userId } = req.body || {};
   if (!messages || !userId) return res.status(400).json({ error: 'Invalid request' });
 
-  // Получаем или создаём пользователя
-  let { data: user, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (error || !user) {
+  // Получаем пользователя
+  let user = null;
+  const selectRes = await sbFetch(`users?user_id=eq.${encodeURIComponent(userId)}&limit=1`);
+  const selectData = await selectRes.json();
+  if (Array.isArray(selectData) && selectData.length > 0) {
+    user = selectData[0];
+  } else {
     // Новый пользователь
-    const { data: newUser } = await supabase
-      .from('users')
-      .insert([{
+    const insertRes = await sbFetch('users', {
+      method: 'POST',
+      body: JSON.stringify({
         user_id: userId,
         messages_used: 0,
         is_premium: false,
         created_at: new Date().toISOString()
-      }])
-      .select()
-      .single();
-    user = newUser;
+      })
+    });
+    const inserted = await insertRes.json();
+    user = Array.isArray(inserted) ? inserted[0] : inserted;
   }
 
-  // Проверяем подписку и лимит
   const isPremium = user?.is_premium;
   const messagesUsed = user?.messages_used || 0;
 
   if (!isPremium && messagesUsed >= FREE_LIMIT) {
-    return res.status(402).json({
-      error: 'limit_reached',
-      messagesUsed,
-      limit: FREE_LIMIT
-    });
+    return res.status(402).json({ error: 'limit_reached', messagesUsed, limit: FREE_LIMIT });
   }
 
   const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -74,10 +76,10 @@ export default async function handler(req, res) {
     if (!response.ok) return res.status(response.status).json({ error: data.error?.message });
 
     // Увеличиваем счётчик
-    await supabase
-      .from('users')
-      .update({ messages_used: messagesUsed + 1 })
-      .eq('user_id', userId);
+    await sbFetch(`users?user_id=eq.${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ messages_used: messagesUsed + 1 })
+    });
 
     return res.status(200).json({
       ...data,
