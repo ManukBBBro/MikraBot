@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git push *)",
+      "Read(//c/Users/manuk/Downloads/**)",
+      "Read(//c/Users/manuk/Downloads/МикроБот-v4/**)"
+    ]
+  }
+}
